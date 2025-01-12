@@ -24,7 +24,7 @@ class EncajeLegalGroupedResponseModel(BaseModel):
     Total: Dict[str, List[CategoriaTotalModel]]  # Totales agrupados por categoría y subcategoría
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "fuente": "Banco Central",
                 "reporte": "encaje_legal",
