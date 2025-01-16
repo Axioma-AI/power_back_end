@@ -8,6 +8,7 @@ class IndicatorSearchResponseModel(BaseModel):
     code: str
     description: Optional[str]
     data_count: Optional[int]
+    source: Optional[str]
 
 
 class IndicatorDetailModel(BaseModel):

@@ -41,6 +41,7 @@ class IndicatorsService:
                         indicators_lang.indicator_name,
                         indicators_lang.description,
                         indicators.data_count
+                        indicators.source
                     FROM indicators
                     INNER JOIN indicators_lang ON indicators.indicator_id = indicators_lang.indicator_id
                     INNER JOIN limited_indicators ON indicators.indicator_id = limited_indicators.indicator_id
@@ -60,6 +61,7 @@ class IndicatorsService:
                         IndicatorLang.indicator_name,
                         IndicatorLang.description,
                         Indicator.data_count,
+                        Indicator.source,
                     )
                     .join(Indicator, IndicatorLang.indicator_id == Indicator.indicator_id)
                     .where(IndicatorLang.lang == str(lang))
@@ -76,6 +78,7 @@ class IndicatorsService:
                     name=row.indicator_name,
                     description=row.description,
                     data_count=row.data_count,
+                    source=row.source,
                 )
                 for row in result
             ]
