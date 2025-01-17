@@ -40,7 +40,7 @@ class IndicatorsService:
                         indicators.indicator_code,
                         indicators_lang.indicator_name,
                         indicators_lang.description,
-                        indicators.data_count
+                        indicators.data_count,
                         indicators.source
                     FROM indicators
                     INNER JOIN indicators_lang ON indicators.indicator_id = indicators_lang.indicator_id
@@ -113,6 +113,7 @@ class IndicatorsService:
                 .where(Indicator.indicator_code == indicator_code)
                 .where(IndicatorLang.lang == str(lang))
                 .where(EntityLang.lang == str(lang))
+                .limit(1000)
             )
             result = db.execute(stmt).fetchall()
 
