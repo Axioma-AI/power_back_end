@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile.power_backend # Nombre del Dockerfile
     container_name: power_backend_app
     ports:
-      - "80:50001" # Mapea el puerto 8000 del contenedor al puerto 8000 local
+      - "51002:51002" # Mapea el puerto 8000 del contenedor al puerto 8000 local
     environment:
       SERVICE_NAME: ${SERVICE_NAME}
       K_REVISION: ${K_REVISION}
