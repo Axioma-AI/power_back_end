@@ -2,6 +2,13 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 
+class EntityBasicInfo(BaseModel):
+    id: int
+    code: str
+    name: str
+    data_count: int
+
+
 class IndicatorSearchResponseModel(BaseModel):
     id: int
     name: str
@@ -9,6 +16,7 @@ class IndicatorSearchResponseModel(BaseModel):
     description: Optional[str]
     data_count: Optional[int]
     source: Optional[str]
+    entities: List[EntityBasicInfo]
 
 
 class IndicatorDetailModel(BaseModel):
@@ -42,4 +50,4 @@ class IndicatorDetailsCustomResponseModel(BaseModel):
     indicator_name: str
     indicator_desc: str
     source: str
-    entities: List[IndicatorEntityModel]
+    entity: IndicatorEntityModel

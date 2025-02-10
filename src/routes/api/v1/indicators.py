@@ -63,28 +63,30 @@ async def search_indicators(
 @router.get(
     "/indicators/{indicator_code}",
     response_model=IndicatorDetailsCustomResponseModel,
-    description="Retrieve detailed data for a specific indicator by its code."
+    description="Retrieve detailed data for a specific indicator and entity."
 )
 async def get_indicator_details(
     indicator_code: str,
+    entity_code: str,
     lang: LANGUAGE = LANGUAGE.EN,
     db: Session = Depends(get_db)
 ):
     logger.info(
-        f"Fetching details for indicator: {indicator_code}, lang: {lang}")
+        f"Fetching details for indicator: {indicator_code}, entity: {entity_code}, lang: {lang}")
     try:
         response = indicators_service.get_indicator_details(
-            indicator_code, lang, db)
+            indicator_code, entity_code, lang, db)
 
         if not response:
-            logger.warning(f"No details found for indicator: {indicator_code}")
+            logger.warning(
+                f"No details found for indicator: {indicator_code} and entity: {entity_code}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No details found for indicator code: {indicator_code}."
+                detail=f"No details found for indicator code: {indicator_code} and entity: {entity_code}"
             )
 
         logger.info(
-            f"Successfully retrieved details for indicator: {indicator_code}")
+            f"Successfully retrieved details for indicator: {indicator_code} and entity: {entity_code}")
         return response
 
     except Exception as e:

@@ -15,6 +15,8 @@ from schema.responses.indicators_responses import (
     IndicatorDetailsCustomResponseModel,
 )
 from utils.logger import setup_logger
+from sqlalchemy import func
+import json
 
 logger = setup_logger(__name__, level=logging.INFO)
 
@@ -25,52 +27,105 @@ class IndicatorsService:
             logger.info(
                 f"Searching indicators with query: {query}, limit: {limit}, lang: {lang}")
 
-            # Validar si el query está presente
             if query and len(query) > 0:
-                # Usar `text` para el query con WITH
                 sql_query = text("""
-                    WITH limited_indicators AS (
-                        SELECT indicator_id
-                        FROM indicators_lang
-                        WHERE MATCH (indicator_name, description) AGAINST (:query IN NATURAL LANGUAGE MODE)
+                    WITH matched_indicators AS (
+                        SELECT DISTINCT i.indicator_id, i.indicator_code, il.indicator_name, 
+                               il.description, i.data_count, i.source
+                        FROM indicators i
+                        INNER JOIN indicators_lang il ON i.indicator_id = il.indicator_id
+                        WHERE il.lang = :lang
+                        AND MATCH (il.indicator_name, il.description) AGAINST (:query IN NATURAL LANGUAGE MODE)
                         LIMIT :limit
+                    ),
+                    entity_counts AS (
+                        SELECT 
+                            dv.indicator_id,
+                            dv.entity_id,
+                            e.entity_code,
+                            el.entity_name,
+                            COUNT(*) as entity_data_count
+                        FROM data_values dv
+                        JOIN matched_indicators mi ON dv.indicator_id = mi.indicator_id
+                        JOIN entities e ON dv.entity_id = e.entity_id
+                        JOIN entities_lang el ON e.entity_id = el.entity_id
+                        WHERE dv.value IS NOT NULL
+                        AND el.lang = :lang
+                        GROUP BY dv.indicator_id, dv.entity_id, e.entity_code, el.entity_name
                     )
-                    SELECT
-                        indicators.indicator_id,
-                        indicators.indicator_code,
-                        indicators_lang.indicator_name,
-                        indicators_lang.description,
-                        indicators.data_count,
-                        indicators.source
-                    FROM indicators
-                    INNER JOIN indicators_lang ON indicators.indicator_id = indicators_lang.indicator_id
-                    INNER JOIN limited_indicators ON indicators.indicator_id = limited_indicators.indicator_id
-                    WHERE indicators_lang.lang = :lang
-                    ORDER BY indicators.data_count DESC
+                    SELECT 
+                        mi.*,
+                        (
+                            SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'id', entity_id,
+                                    'code', entity_code,
+                                    'name', entity_name,
+                                    'data_count', entity_data_count
+                                )
+                            )
+                            FROM (
+                                SELECT *
+                                FROM entity_counts
+                                WHERE indicator_id = mi.indicator_id
+                                ORDER BY entity_data_count DESC
+                                LIMIT 100
+                            ) as sorted_entities
+                        ) as entities_json
+                    FROM matched_indicators mi
                 """)
-
-                # Ejecutar el query
                 result = db.execute(
                     sql_query, {"query": query, "limit": limit, "lang": str(lang)}).fetchall()
             else:
-                # Si no hay query, ejecutar un query más simple
-                stmt = (
-                    select(
-                        IndicatorLang.indicator_id,
-                        Indicator.indicator_code,
-                        IndicatorLang.indicator_name,
-                        IndicatorLang.description,
-                        Indicator.data_count,
-                        Indicator.source,
+                sql_query = text("""
+                    WITH base_indicators AS (
+                        SELECT DISTINCT i.indicator_id, i.indicator_code, il.indicator_name,
+                               il.description, i.data_count, i.source
+                        FROM indicators i
+                        INNER JOIN indicators_lang il ON i.indicator_id = il.indicator_id
+                        WHERE il.lang = :lang
+                        ORDER BY i.data_count DESC
+                        LIMIT :limit
+                    ),
+                    entity_counts AS (
+                        SELECT 
+                            dv.indicator_id,
+                            dv.entity_id,
+                            e.entity_code,
+                            el.entity_name,
+                            COUNT(*) as entity_data_count
+                        FROM data_values dv
+                        JOIN base_indicators bi ON dv.indicator_id = bi.indicator_id
+                        JOIN entities e ON dv.entity_id = e.entity_id
+                        JOIN entities_lang el ON e.entity_id = el.entity_id
+                        WHERE dv.value IS NOT NULL
+                        AND el.lang = :lang
+                        GROUP BY dv.indicator_id, dv.entity_id, e.entity_code, el.entity_name
                     )
-                    .join(Indicator, IndicatorLang.indicator_id == Indicator.indicator_id)
-                    .where(IndicatorLang.lang == str(lang))
-                    .order_by(Indicator.data_count.desc())
-                    .limit(limit)
-                )
-                result = db.execute(stmt).fetchall()
+                    SELECT 
+                        bi.*,
+                        (
+                            SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'id', entity_id,
+                                    'code', entity_code,
+                                    'name', entity_name,
+                                    'data_count', entity_data_count
+                                )
+                            )
+                            FROM (
+                                SELECT *
+                                FROM entity_counts
+                                WHERE indicator_id = bi.indicator_id
+                                ORDER BY entity_data_count DESC
+                                LIMIT 100
+                            ) as sorted_entities
+                        ) as entities_json
+                    FROM base_indicators bi
+                """)
+                result = db.execute(
+                    sql_query, {"limit": limit, "lang": str(lang)}).fetchall()
 
-            # Formatear la respuesta
             indicators = [
                 IndicatorSearchResponseModel(
                     id=row.indicator_id,
@@ -79,6 +134,8 @@ class IndicatorsService:
                     description=row.description,
                     data_count=row.data_count,
                     source=row.source,
+                    entities=json.loads(
+                        row.entities_json) if row.entities_json else []
                 )
                 for row in result
             ]
@@ -89,11 +146,13 @@ class IndicatorsService:
             logger.error(f"Error searching indicators: {e}")
             raise e
 
-    def get_indicator_details(self, indicator_code: str, lang: LANGUAGE, db: Session):
+    def get_indicator_details(self, indicator_code: str, entity_code: str, lang: LANGUAGE, db: Session):
         try:
-            logger.info(f"Fetching details for indicator: {indicator_code}")
-            stmt = (
-                select(
+            logger.info(
+                f"Fetching details for indicator: {indicator_code}, entity: {entity_code}")
+
+            result = (
+                db.query(
                     Indicator.indicator_code,
                     IndicatorLang.indicator_name,
                     IndicatorLang.description,
@@ -102,62 +161,48 @@ class IndicatorsService:
                     EntityLang.entity_name,
                     EntityLang.entity_type,
                     DataValue.value,
-                    TimePeriod.period_label,
+                    TimePeriod.period_label
                 )
-                .join(Indicator, IndicatorLang.indicator_id == Indicator.indicator_id)
+                .join(IndicatorLang, Indicator.indicator_id == IndicatorLang.indicator_id)
                 .join(DataValue, Indicator.indicator_id == DataValue.indicator_id)
                 .join(Entity, DataValue.entity_id == Entity.entity_id)
-                .join(EntityLang, DataValue.entity_id == EntityLang.entity_id)
+                .join(EntityLang, Entity.entity_id == EntityLang.entity_id)
                 .join(TimePeriod, DataValue.period_id == TimePeriod.period_id)
-                .where(EntityLang.entity_type.in_(["Country", "País"]))
-                .where(Indicator.indicator_code == indicator_code)
-                .where(IndicatorLang.lang == str(lang))
-                .where(EntityLang.lang == str(lang))
-                .limit(1000)
+                .filter(Indicator.indicator_code == indicator_code)
+                .filter(Entity.entity_code == entity_code)
+                .filter(IndicatorLang.lang == str(lang))
+                .filter(EntityLang.lang == str(lang))
+                .filter(EntityLang.entity_type.in_(['Country', 'País']))
+                .order_by(TimePeriod.start_year.asc())
+                .all()
             )
-            result = db.execute(stmt).fetchall()
 
-            logger.info(
-                f"Found {len(result)} details for indicator: {indicator_code}")
+            if not result:
+                return None
 
-            # Agrupar los datos por entidad
-            entities_data = {}
-            for row in result:
-                entity_code = row.entity_code
-                if entity_code not in entities_data:
-                    entities_data[entity_code] = {
-                        "entity_code": entity_code,
-                        "entity_name": row.entity_name,
-                        "entity_type": row.entity_type,
-                        "values": []
-                    }
-                entities_data[entity_code]["values"].append({
-                    "value": row.value,
-                    "period": row.period_label
-                })
+            # Get the first row for indicator and entity details
+            first_row = result[0]
 
-            # Preparar los datos para el formato de respuesta
+            # Structure the response
             indicator_details = {
-                "indicator_code": result[0].indicator_code if result else "",
-                "indicator_name": result[0].indicator_name if result else "",
-                "indicator_desc": result[0].description if result else "",
-                "source": result[0].source if result else "",
-                "entities": [
-                    {
-                        "entity_code": entity_data["entity_code"],
-                        "entity_name": entity_data["entity_name"],
-                        "entity_type": entity_data["entity_type"],
-                        "values": [
-                            {"value": value["value"],
-                                "period": value["period"]}
-                            for value in entity_data["values"]
-                        ]
-                    }
-                    for entity_data in entities_data.values()
-                ]
+                "indicator_code": first_row.indicator_code,
+                "indicator_name": first_row.indicator_name,
+                "indicator_desc": first_row.description,
+                "source": first_row.source,
+                "entity": {
+                    "entity_code": first_row.entity_code,
+                    "entity_name": first_row.entity_name,
+                    "entity_type": first_row.entity_type,
+                    "values": [
+                        {
+                            "value": row.value,
+                            "period": row.period_label
+                        }
+                        for row in result
+                    ]
+                }
             }
 
-            # Retornar el modelo de respuesta personalizado
             return IndicatorDetailsCustomResponseModel(**indicator_details)
 
         except Exception as e:
