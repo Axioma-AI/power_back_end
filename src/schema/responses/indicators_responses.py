@@ -6,7 +6,6 @@ class EntityBasicInfo(BaseModel):
     id: int
     code: str
     name: str
-    data_count: int
 
 
 class IndicatorSearchResponseModel(BaseModel):

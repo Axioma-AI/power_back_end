@@ -39,20 +39,18 @@ class IndicatorsService:
                         AND MATCH (il.indicator_name, il.description) AGAINST (:query IN NATURAL LANGUAGE MODE)
                         LIMIT :limit
                     ),
-                    entity_counts AS (
-                        SELECT 
+                    entity_info AS (
+                        SELECT DISTINCT
                             dv.indicator_id,
                             dv.entity_id,
                             e.entity_code,
-                            el.entity_name,
-                            COUNT(*) as entity_data_count
+                            el.entity_name
                         FROM data_values dv
                         JOIN matched_indicators mi ON dv.indicator_id = mi.indicator_id
                         JOIN entities e ON dv.entity_id = e.entity_id
                         JOIN entities_lang el ON e.entity_id = el.entity_id
-                        WHERE dv.value IS NOT NULL
-                        AND el.lang = :lang
-                        GROUP BY dv.indicator_id, dv.entity_id, e.entity_code, el.entity_name
+                        WHERE el.lang = :lang
+                        AND dv.value IS NOT NULL
                     )
                     SELECT 
                         mi.*,
@@ -61,17 +59,15 @@ class IndicatorsService:
                                 JSON_OBJECT(
                                     'id', entity_id,
                                     'code', entity_code,
-                                    'name', entity_name,
-                                    'data_count', entity_data_count
+                                    'name', entity_name
                                 )
                             )
                             FROM (
                                 SELECT *
-                                FROM entity_counts
+                                FROM entity_info
                                 WHERE indicator_id = mi.indicator_id
-                                ORDER BY entity_data_count DESC
                                 LIMIT 100
-                            ) as sorted_entities
+                            ) as entities
                         ) as entities_json
                     FROM matched_indicators mi
                 """)
@@ -88,20 +84,18 @@ class IndicatorsService:
                         ORDER BY i.data_count DESC
                         LIMIT :limit
                     ),
-                    entity_counts AS (
-                        SELECT 
+                    entity_info AS (
+                        SELECT DISTINCT
                             dv.indicator_id,
                             dv.entity_id,
                             e.entity_code,
-                            el.entity_name,
-                            COUNT(*) as entity_data_count
+                            el.entity_name
                         FROM data_values dv
                         JOIN base_indicators bi ON dv.indicator_id = bi.indicator_id
                         JOIN entities e ON dv.entity_id = e.entity_id
                         JOIN entities_lang el ON e.entity_id = el.entity_id
-                        WHERE dv.value IS NOT NULL
-                        AND el.lang = :lang
-                        GROUP BY dv.indicator_id, dv.entity_id, e.entity_code, el.entity_name
+                        WHERE el.lang = :lang
+                        AND dv.value IS NOT NULL
                     )
                     SELECT 
                         bi.*,
@@ -110,17 +104,15 @@ class IndicatorsService:
                                 JSON_OBJECT(
                                     'id', entity_id,
                                     'code', entity_code,
-                                    'name', entity_name,
-                                    'data_count', entity_data_count
+                                    'name', entity_name
                                 )
                             )
                             FROM (
                                 SELECT *
-                                FROM entity_counts
+                                FROM entity_info
                                 WHERE indicator_id = bi.indicator_id
-                                ORDER BY entity_data_count DESC
                                 LIMIT 100
-                            ) as sorted_entities
+                            ) as entities
                         ) as entities_json
                     FROM base_indicators bi
                 """)
