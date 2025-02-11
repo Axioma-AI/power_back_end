@@ -166,7 +166,7 @@ class IndicatorsService:
                 .filter(IndicatorLang.lang == str(lang))
                 .filter(EntityLang.lang == str(lang))
                 .filter(EntityLang.entity_type.in_(['Country', 'País']))
-                .order_by(TimePeriod.start_year.asc())
+                .order_by(TimePeriod.period_label.asc())
                 .all()
             )
 
@@ -229,7 +229,7 @@ class IndicatorsService:
                 .filter(IndicatorLang.lang == str(lang))
                 .filter(EntityLang.lang == str(lang))
                 .filter(EntityLang.entity_type.in_(['Country', 'País']))
-                .order_by(Entity.entity_code, TimePeriod.start_year.asc())
+                .order_by(Entity.entity_code, TimePeriod.period_label.asc())
                 .all()
             )
 
