@@ -36,6 +36,10 @@ class IndicatorsService:
                         FROM indicators i
                         INNER JOIN indicators_lang il ON i.indicator_id = il.indicator_id
                         WHERE il.lang = :lang
+                        AND il.indicator_name IS NOT NULL 
+                        AND il.indicator_name != ''
+                        AND il.description IS NOT NULL 
+                        AND il.description != ''
                         AND MATCH (il.indicator_name, il.description) AGAINST (:query IN NATURAL LANGUAGE MODE)
                         LIMIT :limit
                     ),
@@ -50,6 +54,8 @@ class IndicatorsService:
                         JOIN entities e ON dv.entity_id = e.entity_id
                         JOIN entities_lang el ON e.entity_id = el.entity_id
                         WHERE el.lang = :lang
+                        AND el.entity_name IS NOT NULL 
+                        AND el.entity_name != ''
                         AND dv.value IS NOT NULL
                     )
                     SELECT 
@@ -66,7 +72,7 @@ class IndicatorsService:
                                 SELECT *
                                 FROM entity_info
                                 WHERE indicator_id = mi.indicator_id
-                                LIMIT 100
+                                ORDER BY entity_name
                             ) as entities
                         ) as entities_json
                     FROM matched_indicators mi
@@ -81,6 +87,10 @@ class IndicatorsService:
                         FROM indicators i
                         INNER JOIN indicators_lang il ON i.indicator_id = il.indicator_id
                         WHERE il.lang = :lang
+                        AND il.indicator_name IS NOT NULL 
+                        AND il.indicator_name != ''
+                        AND il.description IS NOT NULL 
+                        AND il.description != ''
                         ORDER BY i.data_count DESC
                         LIMIT :limit
                     ),
@@ -95,6 +105,8 @@ class IndicatorsService:
                         JOIN entities e ON dv.entity_id = e.entity_id
                         JOIN entities_lang el ON e.entity_id = el.entity_id
                         WHERE el.lang = :lang
+                        AND el.entity_name IS NOT NULL 
+                        AND el.entity_name != ''
                         AND dv.value IS NOT NULL
                     )
                     SELECT 
@@ -111,7 +123,7 @@ class IndicatorsService:
                                 SELECT *
                                 FROM entity_info
                                 WHERE indicator_id = bi.indicator_id
-                                LIMIT 100
+                                ORDER BY entity_name
                             ) as entities
                         ) as entities_json
                     FROM base_indicators bi
@@ -165,7 +177,6 @@ class IndicatorsService:
                 .filter(Entity.entity_code == entity_code)
                 .filter(IndicatorLang.lang == str(lang))
                 .filter(EntityLang.lang == str(lang))
-                .filter(EntityLang.entity_type.in_(['Country', 'País']))
                 .order_by(TimePeriod.period_label.asc())
                 .all()
             )
@@ -228,7 +239,6 @@ class IndicatorsService:
                 .filter(Entity.entity_code.in_(entity_codes))
                 .filter(IndicatorLang.lang == str(lang))
                 .filter(EntityLang.lang == str(lang))
-                .filter(EntityLang.entity_type.in_(['Country', 'País']))
                 .order_by(Entity.entity_code, TimePeriod.period_label.asc())
                 .all()
             )
