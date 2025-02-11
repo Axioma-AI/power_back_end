@@ -33,12 +33,16 @@ async def search_indicators(
     try:
         response = indicators_service.search_indicators(query, limit, lang, db)
 
-        if not response:
+        if response is None:
             logger.warning("No indicators found for the provided query.")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No indicators found for the specified query."
             )
+        if not response:
+            logger.info(
+                "No indicators found for the provided query, returning empty list")
+            return []
 
         logger.info(f"Found {len(response)} indicators for query: {query}")
         return response
