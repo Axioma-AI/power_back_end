@@ -1,8 +1,9 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from services.indicators_service import IndicatorsService
 from schema.responses.indicators_responses import (
+    IndicatorDetailsCustomResponseModelList,
     IndicatorSearchResponseModel,
     IndicatorDetailsCustomResponseModel,
 )
@@ -87,6 +88,46 @@ async def get_indicator_details(
 
         logger.info(
             f"Successfully retrieved details for indicator: {indicator_code} and entity: {entity_code}")
+        return response
+
+    except Exception as e:
+        logger.error(f"Unexpected error while fetching indicator details: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred. Please try again later."
+        )
+
+
+@router.get(
+    "/indicators/{indicator_code}/entities",
+    response_model=IndicatorDetailsCustomResponseModelList,
+    description="Retrieve detailed data for a specific indicator across multiple entities."
+)
+async def get_indicator_details_by_entities(
+    indicator_code: str,
+    entity_codes: list[str] = Query(...,
+                                    description="List of entity codes to fetch details for"),
+    lang: LANGUAGE = LANGUAGE.EN,
+    db: Session = Depends(get_db)
+):
+    logger.info(
+        f"Fetching details for indicator: {indicator_code}, entities: {entity_codes}, lang: {lang}")
+    try:
+        logger.info(f"Entity codes: {entity_codes}")
+        logger.info(f"Indicator code: {indicator_code}")
+        response = indicators_service.get_indicator_details_by_entities(
+            indicator_code, entity_codes, lang, db)
+
+        if not response:
+            logger.warning(
+                f"No details found for indicator: {indicator_code} and entities: {entity_codes}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No details found for indicator code: {indicator_code} and entities: {entity_codes}"
+            )
+
+        logger.info(
+            f"Successfully retrieved details for indicator: {indicator_code} and entities: {entity_codes}")
         return response
 
     except Exception as e:

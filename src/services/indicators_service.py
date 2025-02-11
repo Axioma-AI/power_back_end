@@ -11,6 +11,7 @@ from models.indicators_model import (
     TimePeriod
 )
 from schema.responses.indicators_responses import (
+    IndicatorDetailsCustomResponseModelList,
     IndicatorSearchResponseModel,
     IndicatorDetailsCustomResponseModel,
 )
@@ -207,4 +208,77 @@ class IndicatorsService:
 
         except Exception as e:
             logger.error(f"Error fetching indicator details: {e}")
+            raise e
+
+    def get_indicator_details_by_entities(self, indicator_code: str, entity_codes: list[str], lang: LANGUAGE, db: Session) -> IndicatorDetailsCustomResponseModelList:
+        try:
+            logger.info(
+                f"Fetching details for indicator: {indicator_code}, entities: {entity_codes}")
+
+            result = (
+                db.query(
+                    Indicator.indicator_code,
+                    IndicatorLang.indicator_name,
+                    IndicatorLang.description,
+                    Indicator.source,
+                    Entity.entity_code,
+                    EntityLang.entity_name,
+                    EntityLang.entity_type,
+                    DataValue.value,
+                    TimePeriod.period_label
+                )
+                .join(IndicatorLang, Indicator.indicator_id == IndicatorLang.indicator_id)
+                .join(DataValue, Indicator.indicator_id == DataValue.indicator_id)
+                .join(Entity, DataValue.entity_id == Entity.entity_id)
+                .join(EntityLang, Entity.entity_id == EntityLang.entity_id)
+                .join(TimePeriod, DataValue.period_id == TimePeriod.period_id)
+                .filter(Indicator.indicator_code == indicator_code)
+                .filter(Entity.entity_code.in_(entity_codes))
+                .filter(IndicatorLang.lang == str(lang))
+                .filter(EntityLang.lang == str(lang))
+                .filter(EntityLang.entity_type.in_(['Country', 'País']))
+                .order_by(Entity.entity_code, TimePeriod.start_year.asc())
+                .all()
+            )
+
+            if not result:
+                return None
+
+            # Group results by entity
+            entities_data = {}
+            indicator_info = None
+
+            for row in result:
+                if not indicator_info:
+                    indicator_info = {
+                        "indicator_code": row.indicator_code,
+                        "indicator_name": row.indicator_name,
+                        "indicator_desc": row.description,
+                        "source": row.source,
+                    }
+
+                entity_code = row.entity_code
+                if entity_code not in entities_data:
+                    entities_data[entity_code] = {
+                        "entity_code": entity_code,
+                        "entity_name": row.entity_name,
+                        "entity_type": row.entity_type,
+                        "values": []
+                    }
+
+                entities_data[entity_code]["values"].append({
+                    "value": row.value,
+                    "period": row.period_label
+                })
+
+            # Create response with list of entities
+            response = {
+                **indicator_info,
+                "entities": list(entities_data.values())
+            }
+
+            return IndicatorDetailsCustomResponseModelList(**response)
+
+        except Exception as e:
+            logger.error(f"Error fetching indicator details by entities: {e}")
             raise e

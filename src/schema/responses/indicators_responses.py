@@ -51,3 +51,11 @@ class IndicatorDetailsCustomResponseModel(BaseModel):
     indicator_desc: str
     source: str
     entity: IndicatorEntityModel
+
+
+class IndicatorDetailsCustomResponseModelList(BaseModel):
+    indicator_code: str
+    indicator_name: str
+    indicator_desc: str
+    source: str
+    entities: List[IndicatorEntityModel]
