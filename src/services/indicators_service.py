@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
-from models.indicators_model import (
+from src.models.indicators_model import (
     LANGUAGE,
     IndicatorLang,
     Indicator,
@@ -10,12 +10,13 @@ from models.indicators_model import (
     EntityLang,
     TimePeriod
 )
-from schema.responses.indicators_responses import (
+from src.models.user_model import UserIndicatorFavorites
+from src.schema.responses.indicators_responses import (
     IndicatorDetailsCustomResponseModelList,
     IndicatorSearchResponseModel,
     IndicatorDetailsCustomResponseModel,
 )
-from utils.logger import setup_logger
+from src.utils.logger import setup_logger
 from sqlalchemy import func
 import json
 
@@ -23,7 +24,7 @@ logger = setup_logger(__name__, level=logging.INFO)
 
 
 class IndicatorsService:
-    def search_indicators(self, query: str | None, limit: int, lang: LANGUAGE, db: Session):
+    def search_indicators(self, query: str | None, limit: int, lang: LANGUAGE, db: Session, user_id: int = None):
         try:
             logger.info(
                 f"Searching indicators with query: {query}, limit: {limit}, lang: {lang}")
@@ -32,9 +33,11 @@ class IndicatorsService:
                 sql_query = text("""
                     WITH matched_indicators AS (
                         SELECT DISTINCT i.indicator_id, i.indicator_code, il.indicator_name, 
-                               il.description, i.data_count, i.source
+                               il.description, i.data_count, i.source,
+                               CASE WHEN uif.is_favorite IS TRUE THEN TRUE ELSE FALSE END as is_favorite
                         FROM indicators i
                         INNER JOIN indicators_lang il ON i.indicator_id = il.indicator_id
+                        LEFT JOIN user_indicator_favs uif ON i.indicator_id = uif.indicator_id AND uif.user_id = :user_id
                         WHERE il.lang = :lang
                         AND il.indicator_name IS NOT NULL 
                         AND il.indicator_name != ''
@@ -78,14 +81,16 @@ class IndicatorsService:
                     FROM matched_indicators mi
                 """)
                 result = db.execute(
-                    sql_query, {"query": query, "limit": limit, "lang": str(lang)}).fetchall()
+                    sql_query, {"query": query, "limit": limit, "lang": str(lang), "user_id": user_id}).fetchall()
             else:
                 sql_query = text("""
                     WITH base_indicators AS (
                         SELECT DISTINCT i.indicator_id, i.indicator_code, il.indicator_name,
-                               il.description, i.data_count, i.source
+                               il.description, i.data_count, i.source,
+                               CASE WHEN uif.is_favorite IS TRUE THEN TRUE ELSE FALSE END as is_favorite
                         FROM indicators i
                         INNER JOIN indicators_lang il ON i.indicator_id = il.indicator_id
+                        LEFT JOIN user_indicator_favs uif ON i.indicator_id = uif.indicator_id AND uif.user_id = :user_id
                         WHERE il.lang = :lang
                         AND il.indicator_name IS NOT NULL 
                         AND il.indicator_name != ''
@@ -129,7 +134,7 @@ class IndicatorsService:
                     FROM base_indicators bi
                 """)
                 result = db.execute(
-                    sql_query, {"limit": limit, "lang": str(lang)}).fetchall()
+                    sql_query, {"limit": limit, "lang": str(lang), "user_id": user_id}).fetchall()
 
             indicators = [
                 IndicatorSearchResponseModel(
@@ -139,6 +144,7 @@ class IndicatorsService:
                     description=row.description,
                     data_count=row.data_count,
                     source=row.source,
+                    is_favorite=row.is_favorite,
                     entities=json.loads(
                         row.entities_json) if row.entities_json else []
                 )
@@ -284,3 +290,84 @@ class IndicatorsService:
         except Exception as e:
             logger.error(f"Error fetching indicator details by entities: {e}")
             raise e
+
+    async def toggle_favorite_indicator(self, db: Session, user_id: int, indicator_id: int, is_favorite: bool) -> bool:
+        try:
+            favorite = db.query(UserIndicatorFavorites).filter(
+                UserIndicatorFavorites.user_id == user_id,
+                UserIndicatorFavorites.indicator_id == indicator_id
+            ).first()
+
+            if favorite:
+                favorite.is_favorite = is_favorite
+            else:
+                favorite = UserIndicatorFavorites(
+                    user_id=user_id,
+                    indicator_id=indicator_id,
+                    is_favorite=is_favorite
+                )
+                db.add(favorite)
+
+            db.commit()
+            return is_favorite
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error toggling favorite indicator: {e}")
+            raise
+
+    async def get_user_favorites(self, db: Session, user_id: int):
+        try:
+            query = text("""
+                SELECT 
+                    i.indicator_id,
+                    i.indicator_code,
+                    il.indicator_name,
+                    il.description,
+                    i.data_count,
+                    i.source,
+                    uif.is_favorite,
+                    (
+                        SELECT JSON_ARRAYAGG(
+                            JSON_OBJECT(
+                                'id', e.entity_id,
+                                'code', e.entity_code,
+                                'name', el.entity_name
+                            )
+                        )
+                        FROM data_values dv
+                        JOIN entities e ON dv.entity_id = e.entity_id
+                        JOIN entities_lang el ON e.entity_id = el.entity_id
+                        WHERE dv.indicator_id = i.indicator_id
+                        AND el.lang = 'EN'
+                        GROUP BY dv.indicator_id
+                    ) as entities_json
+                FROM user_indicator_favs uif
+                JOIN indicators i ON uif.indicator_id = i.indicator_id
+                JOIN indicators_lang il ON i.indicator_id = il.indicator_id
+                WHERE uif.user_id = :user_id
+                AND uif.is_favorite = TRUE
+                AND il.lang = 'EN'
+            """)
+
+            result = db.execute(query, {"user_id": user_id}).fetchall()
+
+            favorites = [
+                IndicatorSearchResponseModel(
+                    id=row.indicator_id,
+                    code=row.indicator_code,
+                    name=row.indicator_name,
+                    description=row.description,
+                    data_count=row.data_count,
+                    source=row.source,
+                    is_favorite=row.is_favorite,
+                    entities=json.loads(
+                        row.entities_json) if row.entities_json else []
+                )
+                for row in result
+            ]
+
+            return favorites
+
+        except Exception as e:
+            logger.error(f"Error getting user favorites: {e}")
+            raise

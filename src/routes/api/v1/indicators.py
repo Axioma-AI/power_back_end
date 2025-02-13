@@ -2,15 +2,16 @@ import logging
 import traceback
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
-from services.indicators_service import IndicatorsService
-from schema.responses.indicators_responses import (
+from src.models.user_model import UserModel
+from src.services.indicators_service import IndicatorsService
+from src.schema.responses.indicators_responses import (
     IndicatorDetailsCustomResponseModelList,
     IndicatorSearchResponseModel,
     IndicatorDetailsCustomResponseModel,
 )
-from models.indicators_model import LANGUAGE
-from config.db_config import get_db
-from utils.logger import setup_logger
+from src.models.indicators_model import LANGUAGE
+from src.config.db_config import get_db
+from src.utils.logger import setup_logger
 from src.middleware.auth_middleware import verify_token
 
 logger = setup_logger(__name__, level=logging.INFO)
@@ -35,7 +36,9 @@ async def search_indicators(
     logger.info(
         f"Searching indicators with query: {query}, limit: {limit}, lang: {lang}")
     try:
-        response = indicators_service.search_indicators(query, limit, lang, db)
+        user: UserModel = request.state.db_user
+        response = indicators_service.search_indicators(
+            query, limit, lang, db, user.id)
 
         if response is None:
             logger.warning("No indicators found for the provided query.")

@@ -15,6 +15,7 @@ class IndicatorSearchResponseModel(BaseModel):
     description: Optional[str]
     data_count: Optional[int]
     source: Optional[str]
+    is_favorite: Optional[bool]
     entities: List[EntityBasicInfo]
 
 
