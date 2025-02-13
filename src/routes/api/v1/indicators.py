@@ -1,5 +1,6 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+import traceback
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from services.indicators_service import IndicatorsService
 from schema.responses.indicators_responses import (
@@ -10,6 +11,7 @@ from schema.responses.indicators_responses import (
 from models.indicators_model import LANGUAGE
 from config.db_config import get_db
 from utils.logger import setup_logger
+from src.middleware.auth_middleware import verify_token
 
 logger = setup_logger(__name__, level=logging.INFO)
 
@@ -22,7 +24,9 @@ indicators_service = IndicatorsService()
     response_model=list[IndicatorSearchResponseModel],
     description="Search for indicators based on a keyword, with optional language and result limit."
 )
+@verify_token
 async def search_indicators(
+    request: Request,
     query: str = None,
     limit: int = 10,
     lang: LANGUAGE = LANGUAGE.EN,
@@ -51,17 +55,17 @@ async def search_indicators(
         if http_exc.status_code == status.HTTP_404_NOT_FOUND:
             raise http_exc
         logger.error(
-            f"HTTP error occurred while searching indicators: {http_exc}")
+            f"HTTP error occurred while searching indicators: {http_exc}\nTraceback:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred. Please try again later."
+            detail=str(http_exc)
         )
     except Exception as e:
         logger.error(
-            f"Unexpected error occurred while searching indicators: {e}")
+            f"Unexpected error occurred while searching indicators: {e}\nTraceback:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred. Please try again later."
+            detail=str(e)
         )
 
 
@@ -70,7 +74,9 @@ async def search_indicators(
     response_model=IndicatorDetailsCustomResponseModel,
     description="Retrieve detailed data for a specific indicator and entity."
 )
+@verify_token
 async def get_indicator_details(
+    request: Request,
     indicator_code: str,
     entity_code: str,
     lang: LANGUAGE = LANGUAGE.EN,
@@ -107,7 +113,9 @@ async def get_indicator_details(
     response_model=IndicatorDetailsCustomResponseModelList,
     description="Retrieve detailed data for a specific indicator across multiple entities."
 )
+@verify_token
 async def get_indicator_details_by_entities(
+    request: Request,
     indicator_code: str,
     entity_codes: list[str] = Query(...,
                                     description="List of entity codes to fetch details for"),

@@ -7,8 +7,6 @@ import os
 sys.path.append(os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../")))
 
-
 router = APIRouter()
-# router.include_router(articles.router)
 router.include_router(encaje_legal.router, tags=["Encaje Legal"])
 router.include_router(indicators.router, tags=["Indicadores"])
