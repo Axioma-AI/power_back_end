@@ -317,39 +317,58 @@ class IndicatorsService:
 
     async def get_user_favorites(self, db: Session, user_id: int):
         try:
-            query = text("""
+            sql_query = text("""
+                WITH favorite_indicators AS (
+                    SELECT DISTINCT i.indicator_id, i.indicator_code, il.indicator_name, 
+                           il.description, i.data_count, i.source,
+                           uif.is_favorite
+                    FROM indicators i
+                    INNER JOIN indicators_lang il ON i.indicator_id = il.indicator_id
+                    INNER JOIN user_indicator_favs uif ON i.indicator_id = uif.indicator_id
+                    WHERE uif.user_id = :user_id
+                    AND uif.is_favorite = TRUE
+                    AND il.lang = 'EN'
+                    AND il.indicator_name IS NOT NULL 
+                    AND il.indicator_name != ''
+                    AND il.description IS NOT NULL 
+                    AND il.description != ''
+                ),
+                entity_info AS (
+                    SELECT DISTINCT
+                        dv.indicator_id,
+                        dv.entity_id,
+                        e.entity_code,
+                        el.entity_name
+                    FROM data_values dv
+                    JOIN favorite_indicators fi ON dv.indicator_id = fi.indicator_id
+                    JOIN entities e ON dv.entity_id = e.entity_id
+                    JOIN entities_lang el ON e.entity_id = el.entity_id
+                    WHERE el.lang = 'EN'
+                    AND el.entity_name IS NOT NULL 
+                    AND el.entity_name != ''
+                    AND dv.value IS NOT NULL
+                )
                 SELECT 
-                    i.indicator_id,
-                    i.indicator_code,
-                    il.indicator_name,
-                    il.description,
-                    i.data_count,
-                    i.source,
-                    uif.is_favorite,
+                    fi.*,
                     (
                         SELECT JSON_ARRAYAGG(
                             JSON_OBJECT(
-                                'id', e.entity_id,
-                                'code', e.entity_code,
-                                'name', el.entity_name
+                                'id', entity_id,
+                                'code', entity_code,
+                                'name', entity_name
                             )
                         )
-                        FROM data_values dv
-                        JOIN entities e ON dv.entity_id = e.entity_id
-                        JOIN entities_lang el ON e.entity_id = el.entity_id
-                        WHERE dv.indicator_id = i.indicator_id
-                        AND el.lang = 'EN'
-                        GROUP BY dv.indicator_id
+                        FROM (
+                            SELECT *
+                            FROM entity_info
+                            WHERE indicator_id = fi.indicator_id
+                            ORDER BY entity_name
+                        ) as entities
                     ) as entities_json
-                FROM user_indicator_favs uif
-                JOIN indicators i ON uif.indicator_id = i.indicator_id
-                JOIN indicators_lang il ON i.indicator_id = il.indicator_id
-                WHERE uif.user_id = :user_id
-                AND uif.is_favorite = TRUE
-                AND il.lang = 'EN'
+                FROM favorite_indicators fi
             """)
 
-            result = db.execute(query, {"user_id": user_id}).fetchall()
+            result = db.execute(sql_query, {"user_id": user_id}).fetchall()
 
             favorites = [
                 IndicatorSearchResponseModel(
